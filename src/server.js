@@ -122,6 +122,27 @@ async function waitForGatewayReady(opts = {}) {
   return false;
 }
 
+// After gateway starts successfully in ensureGatewayRunning():
+async function ensureGatewayRunning() {
+  if (!isConfigured()) return { ok: false, reason: "not configured" };
+  if (gatewayProc) return { ok: true };
+  if (!gatewayStarting) {
+    gatewayStarting = (async () => {
+      await startGateway();
+      const ready = await waitForGatewayReady({ timeoutMs: 20_000 });
+      if (!ready) {
+        throw new Error("Gateway did not become ready in time");
+      }
+      // Print the dashboard URL
+      console.log(`[gateway] Dashboard URL: ${GATEWAY_TARGET}/?token=${OPENCLAW_GATEWAY_TOKEN}`);
+    })().finally(() => {
+      gatewayStarting = null;
+    });
+  }
+  await gatewayStarting;
+  return { ok: true };
+}
+
 async function startGateway() {
   if (gatewayProc) return;
   if (!isConfigured()) throw new Error("Gateway cannot start: not configured");
@@ -131,7 +152,6 @@ async function startGateway() {
 
   const args = [
     "gateway",
-    "run",
     "--bind",
     "loopback",
     "--port",
@@ -140,6 +160,7 @@ async function startGateway() {
     "token",
     "--token",
     OPENCLAW_GATEWAY_TOKEN,
+    "--verbose",
   ];
 
   gatewayProc = childProcess.spawn(OPENCLAW_NODE, clawArgs(args), {
